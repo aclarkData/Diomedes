@@ -1,0 +1,37 @@
+cd "Data"
+
+import-module ActiveDirectory
+
+$currentDate = Get-Date -format "MM-dd-yy"
+$fileName = ("DiomedesGroupsDomain1_" + $currentDate + ".csv")
+
+
+$Groups = (Get-AdGroup -filter * -Server "FOREST_DOMAIN" -searchbase "OU=OU_IN_QUESTION,DC=DOMAIN,DC=DOMAIN" | Where {$_.name -like "**"} | select name -ExpandProperty name)
+
+$Table = @()
+
+$Record = @{
+  "Group Name" = ""
+  "Name" = ""
+  "Username" = ""
+  "Company" = "DOMAIN_NAME"
+}
+
+
+Foreach ($Group in $Groups) {
+
+  $Arrayofmembers = Get-ADGroupMember  -Server "FOREST_DOMAIN" -identity $Group -recursive | select name,samaccountname
+
+  foreach ($Member in $Arrayofmembers) {
+    $Record."Group Name" = $Group
+    $Record."Name" = $Member.name
+    $Record."UserName" = $Member.samaccountname
+    $objRecord = New-Object PSObject -property $Record
+    $Table += $objrecord
+
+  }
+}
+
+$Table | export-csv $fileName -NoTypeInformation
+
+#https://serverfault.com/questions/532945/list-all-groups-and-their-members-with-powershell-on-win2008r2

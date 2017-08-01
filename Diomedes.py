@@ -1,44 +1,32 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Apr 14 15:37:07 2017
-
-@author: aclark
-"""
-
-
 import pandas as pd
-import sqlite3
 import datetime
-from subprocess import check_call
+from subprocess import Popen
 import os
 import glob
 import time
+from sqlalchemy import create_engine
+
+# convert the text files to powershell scripts
+
+def DiomedesDB():
+	'''MySQL database connection'''
+	cnx = create_engine('bXlzcWwrcHlteXNxbDovL3VzZXJuYW1lOlBhc3N3b3JkQElQQWRkcmVzczozMzA2L0RhdGFiYXNl\nTmFtZQ==\n'.decode('base64','strict'), echo=False)
+        return cnx
 
 
 # Get current system date
 d = datetime.datetime.now()
 date = d.strftime("%m-%d-%y")
 
+
+#Create a list to hold process handles
+process_handles = []
+
 #################################### User listing
 
-# cd to directory
-os.chdir("repos/Diomedes")
-
-
 #Run User list
-check_call(["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",".\DiomedesUsers"])
+process_handles.append(Popen(["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",".\DiomedesUsers"]))
 
-filenamePath = 'Diomedes/data/DiomedesUser_%s.csv' % date
-DailyADUsers = pd.read_csv(filenamePath, skiprows = 1)
-
-# Fill all NA values with zeros
-DailyADUsers.fillna(0,inplace=True)
-
-# Assign current date to dataframe
-DailyADUsers['RunDate'] = date
-
-# Remove duplicate entries, if they exist
-DailyADUsers.drop_duplicates(inplace=True)
 ############################# Groups
 
 # cd to directory
@@ -46,12 +34,37 @@ os.chdir("/Diomedes/DomainGroups")
 
 
 #Run domain 1
-check_call(["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe","./Domain1Groups"])
+process_handles.append(Popen(["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",".\Domain1Groups"]))
 
 #Run domain 2, etc.
 
+################################## All Groups - no sub Groups
+
+#Run domain 1
+process_handles.append(Popen(["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",".\Domain1NonRecursiveGroups"]))
+
+#Run domain 2, etc.
+
+#Wait for all subprocesses to complete
+for p in process_handles:
+    p.wait()
+
+################################## Process user files
+filenamePath = 'Data/DiomedesUser_%s.csv' % date
+DailyADUsers = pd.read_csv(filenamePath, skiprows = 1)
+
+# Fill all NA values with zeros
+DailyADUsers.fillna(0,inplace=True)
+
+# Assign current date to Dataframe
+DailyADUsers['RunDate'] = date
+
+# Remove duplicate entries, if they exist
+DailyADUsers.drop_duplicates(inplace=True)
+
+################################## Combine group files
 # Import all groups files
-path = '/Diomedes/data/'
+path = 'Data/'
 location = path + 'DiomedesGroups*_%s.csv' % date
 allFiles = glob.glob(location)
 frame = pd.DataFrame()
@@ -62,26 +75,19 @@ for file_ in allFiles:
 frame = pd.concat(list_)
 
 # Fill all NA values with zeros
-
 DailyADGroups=frame.fillna(0)
 
-# Assign current date to dataframe
+# Change column name
+DailyADGroups=DailyADGroups.rename(columns = {'Group Name':'Group_Name'})
+
+# Assign current date to Dataframe
 DailyADGroups['RunDate'] = date
 
 # Remove duplicate entries, if they exist
 DailyADGroups.drop_duplicates(inplace=True)
-################################## All Groups - no sub Groups
-
-# cd to directory
-os.chdir("/Diomedes/DomainGroupsNoSubGroups")
-
-#Run domain 1
-check_call(["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe","./Domain1NonRecursiveGroups"])
-
-#Run domain 2, etc.
 
 # Import all NonRecursive group files
-pathNonRecursive = '/Diomedes/data/'
+pathNonRecursive = 'Data/'
 locationNonRecursive = pathNonRecursive + 'DiomedesNonRecursiveGroups*_%s.csv' % date
 allFilesNonRecursive = glob.glob(locationNonRecursive)
 frameNonRecursive = pd.DataFrame()
@@ -95,22 +101,24 @@ frameNonRecursive = pd.concat(list_NonRecursive)
 
 DailyADNonRecursiveGroups=frameNonRecursive.fillna(0)
 
-# Assign current date to dataframe
+# Change column name
+DailyADNonRecursiveGroups=DailyADNonRecursiveGroups.rename(columns = {'Group Name':'Group_Name'})
+
+# Assign current date to Dataframe
 DailyADNonRecursiveGroups['RunDate'] = date
 
 # Remove duplicate entries, if they exist
 DailyADNonRecursiveGroups.drop_duplicates(inplace=True)
-################################## Connect to database
-# Connect to SQLite database
-SQL3conn = sqlite3.connect('/Diomedes.db')
+################################## Connect to Database
 
-DailyADUsers.to_sql("Users",con=SQL3conn,if_exists='append')
+# Connect to Database
+cnx = Diomedes()
 
-DailyADGroups.to_sql("Groups",con=SQL3conn,if_exists='append')
+DailyADUsers.to_sql("Users",con=cnx,if_exists='append', index=False)
 
-DailyADNonRecursiveGroups.to_sql("GroupsNonRecursive",con=SQL3conn,if_exists='append')
+DailyADGroups.to_sql("Groups",con=cnx,if_exists='append', index=False)
 
-SQL3conn.close()
+DailyADNonRecursiveGroups.to_sql("GroupsNonRecursive",con=cnx, if_exists='append', index=False)
 
 ############################
 # Purge items from directory > 7 days old
@@ -130,5 +138,16 @@ def purgeDir(dir, age):
                 os.remove(filepath)
                 print 'Deleted: %s (%s)' % (f, modified)
 
-#Remove files that are over 7 days old.
-purgeDir("/Diomedes/data/",(7*86400))
+#Remove files that are over 2 days old.
+purgeDir("Data/",(2*86400))
+
+
+# Create success log file and post to log table
+CurrentDate = datetime.datetime.now().strftime("%Y-%m-%d")
+DictionaryTransformation = {'DateRan': CurrentDate,
+                            'Group': 'DailyDiomedes',
+                            'Status' : 'SUCCESS'}
+
+Log = pd.DataFrame(DictionaryTransformation, index=[1])
+
+Log.to_sql("DiomedesLog",con=cnx,if_exists='append', index=False)

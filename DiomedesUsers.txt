@@ -1,0 +1,8 @@
+cd "Data"
+
+import-module ActiveDirectory
+
+$currentDate = Get-Date -format "MM-dd-yy" #"yyyy_MM_dd"
+$fileName = ("DiomedesUser_" + $currentDate + ".csv")
+
+Get-ADUser -Filter * -Properties Name, DistinguishedName, Title, Enabled, PasswordLastSet,AccountExpirationDate,AccountLockoutTime,badPwdCount,Created,LastBadPasswordAttempt,LastLogonDate,LockedOut,LockoutTime,LogonCount,Mail,Modified,ObjectClass,PasswordExpired,PasswordNeverExpires,PasswordNotRequired,WhenCreated,WhenChanged,CanonicalName -Server GlobalCatalog:3268 | SELECT Name, DistinguishedName, Title, Enabled, PasswordLastSet, AccountExpirationDate,AccountLockoutTime,badPwdCount,Created,LastBadPasswordAttempt,LastLogonDate,LockedOut,LockoutTime,LogonCount,Mail,Modified,ObjectClass,PasswordExpired,PasswordNeverExpires,PasswordNotRequired,WhenCreated,WhenChanged,CanonicalName | Export-CSV  $fileName 
